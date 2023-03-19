@@ -1,0 +1,177 @@
+#include "DSP281x_Device.h"     // DSP281x Headerfile Include File
+#include "DSP281x_Examples.h"   // DSP281x Examples Include File
+
+/***************全局变量定义****************/
+#define uchar unsigned char
+
+/****************端口宏定义*****************/
+#define LCD_RS GpioDataRegs.GPADAT.bit.GPIOA6
+//#define LCD_RW GpioDataRegs.GPADAT.bit.GPIO2
+#define LCD_EN GpioDataRegs.GPADAT.bit.GPIOA7
+#define LCD_DB GpioDataRegs.GPBDAT.all
+
+// 使用前，声明本文件中的相关函数
+void Init_Port(void);
+void LCD_init(void);                          //初始化函数
+void LCD_write_command(uchar command);        //写指令函数
+void LCD_write_data(uchar dat);               //写数据函数
+void show(char *cont);                       //显示子函数
+
+
+void main(void)
+{
+uchar i;
+// 步骤 1. 初始化系统控制:
+// 设置PLL, WatchDog, 使能外设时钟
+// 下面这个函数可以从DSP281x_SysCtrl.c文件中找到.
+   InitSysCtrl();
+
+// 步骤 2. 初始化通用输入输出多路复用器GPIO:
+// 这个函数在DSP281x_Gpio.c源文件中被定义了
+
+
+//本例仅初始化液晶对应的GPIO引脚；
+   Init_Port();
+
+// 步骤 3. 清除所有中断,初始化中断向量表:
+// 禁止CPU全局中断
+   DINT;
+
+// 初始化PIE控制寄存器到他们的默认状态.
+// 这个默认状态就是禁止PIE中断及清除所有PIE中断标志
+// 这个函数放在DSP281x_PieCtrl.c源文件里
+   InitPieCtrl();
+
+// 禁止CPU中断和清除所有CPU中断标志
+   IER = 0x0000;
+   IFR = 0x0000;
+
+//初始化PIE中断向量表，并使其指向中断服务子程序（ISR）
+// 这些中断服务子程序被放在了DSP281x_DefaultIsr.c源文件中
+// 这个函数放在了DSP281x_PieVect.c源文件里面.
+
+   InitPieVectTable();
+
+
+// 步骤 4.初始化片内外设:
+// 该函数可以在DSP281x_InitPeripherals.c里找到
+// InitPeripherals(); // 本例不需要
+
+// 步骤 5. 用户指定的例程:
+// 循环函数，显示字符串:
+   for(;;)
+   {
+     LCD_init();
+	 LCD_write_command(0x80);	//第一行数据指针地址
+    for(i=0;i<4;i++)
+	{
+     LCD_write_data(0x01); //笑脸
+     LCD_write_data(0x01); //笑脸
+     LCD_write_data(0x01); //笑脸
+     LCD_write_data(0x01); //笑脸
+     LCD_write_data(0xD3); //硬
+     LCD_write_data(0xB2);
+	 LCD_write_data(0xBA); //汉
+     LCD_write_data(0xBA);
+     LCD_write_data(0xBF); //科
+     LCD_write_data(0xC6);
+	 LCD_write_data(0xBC); //技
+     LCD_write_data(0xBC);
+     LCD_write_data(0x01); //笑脸
+     LCD_write_data(0x01); //笑脸
+     LCD_write_data(0x01); //笑脸
+     LCD_write_data(0x01); //笑脸
+	 DELAY_US(100);
+     }
+
+      while(1);
+
+   }
+
+}
+
+/*------------------------------------------*/
+/*形式参数：void                            */
+/*返回值:void				                */
+/*函数描述:初始化电机控制端口               */
+/*------------------------------------------*/
+void Init_Port(void)
+{
+	EALLOW;
+
+/* 通过I/O功能选择寄存器配置通用I/O功能*/
+    GpioMuxRegs.GPAMUX.all = 0x0000;   // 配置GPIOA为通用I/O口
+    GpioMuxRegs.GPBMUX.all = 0x0000;   // 配置GPIOB为通用I/O口
+
+
+/* 设置I/O口为输入引脚*/
+    GpioMuxRegs.GPADIR.all = 0xFFFF;// 配置GPIOA为输出引脚
+	GpioMuxRegs.GPBDIR.all = 0xFFFF;// 配置GPIOB为输出引脚
+
+// 每个输入口可以有不同的输入限定
+   // a) 输入与系统时钟 SYSCLKOUT同步
+   // b) 输入被指定的采样窗口限定
+   // c) 输入异步 (仅对外设输入有效)
+   GpioMuxRegs.GPAQUAL.all = 0x0000;    // GPIOA与系统时钟SYSCLKOUT 同步
+   GpioMuxRegs.GPBQUAL.all = 0x0000;    // GPIOB与系统时钟SYSCLKOUT 同步
+//输出数据LCD_RS和LCD_EN清零
+   GpioDataRegs.GPADAT.bit.GPIOA6 = 1;
+   //GpioDataRegs.GPADAT.bit.GPIO2 = 0;
+   GpioDataRegs.GPADAT.bit.GPIOA7 = 0;
+    EDIS;
+}
+
+/*--------------------------------------
+;模块名称:LCD_write_command();
+;功    能:LCD12864写指令函数
+;参数说明:command为写命令参数
+;-------------------------------------*/
+void LCD_write_command(uchar command)
+{
+LCD_EN=0;
+LCD_RS=0;         //指令
+//LCD_RW=0;         //写入
+LCD_DB=command;//赋值给D0-D7对应的GPIO引脚
+DELAY_US(1000);
+LCD_EN=1;          //允许
+DELAY_US(1000);  //
+LCD_EN=0;
+
+}
+
+/*--------------------------------------
+;模块名称:LCD_write_data();
+;功    能:LCD12864写数据函数
+;参数说明:dat为写数据参数
+;-------------------------------------*/
+void LCD_write_data(uchar dat)
+{
+LCD_EN=0;
+LCD_RS=1;          //数据
+//LCD_RW=0;          //写入
+LCD_DB=dat;//赋值给D0-D7对应的GPIO引脚
+DELAY_US(500);
+LCD_EN=1;           //允许
+DELAY_US(1000);
+LCD_EN=0;
+}
+/*--------------------------------------
+;模块名称:LCD_init();
+;功    能:初始化LCD12864
+;占用资源:--
+;参数说明:--
+;-------------------------------------*/
+void LCD_init(void)
+{
+DELAY_US(100000);//延迟100ms
+LCD_write_command(0x30);//功能设置
+DELAY_US(200);//延迟200us
+LCD_write_command(0x30);//功能设置
+DELAY_US(200);//延迟200us
+LCD_write_command(0x0c);//显示开关控制
+DELAY_US(200);//延迟200us
+LCD_write_command(0x01);//显示清除
+DELAY_US(12000);//延迟12ms
+LCD_write_command(0x06);//显示清除
+DELAY_US(500);//延迟500us
+}
